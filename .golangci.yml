@@ -1,0 +1,12 @@
+version: "2"
+linters:
+  enable:
+    - gocritic
+    - wrapcheck
+issues:
+  fix: true  
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
