@@ -9,23 +9,46 @@ import (
 	"time"
 )
 
+// CommandBuilder defines a fluent interface for configuring command execution
+// and expectations. Implementations should chain method calls to build test
+// scenarios. All methods return the receiver to enable method chaining.
 type CommandBuilder interface {
 	Executable
 
+	// WithTimeout sets a timeout for the command execution.
 	WithTimeout(duration time.Duration) CommandBuilder
 
+	// ExpectExitCode expects the command to exit with the given code.
 	ExpectExitCode(code int) CommandBuilder
+
+	// ExpectSuccess expects the command to exit with code 0.
 	ExpectSuccess() CommandBuilder // shorthand ExpectExitCode(0)
+
+	// ExpectFailure expects the command to exit with a non-zero code.
 	ExpectFailure() CommandBuilder // shorthand ExpectExitCode != 0
 
+	// ExpectStdoutContains expects stdout to contain the given substring.
 	ExpectStdoutContains(substr string) CommandBuilder
+
+	// ExpectStderrContains expects stderr to contain the given substring.
 	ExpectStderrContains(substr string) CommandBuilder
+
+	// ExpectStdoutRegex expects stdout to match the given regex pattern.
 	ExpectStdoutRegex(pattern string) CommandBuilder
+
+	// ExpectStderrRegex expects stderr to match the given regex pattern.
 	ExpectStderrRegex(pattern string) CommandBuilder
+
+	// ExpectStdoutEmpty expects stdout to be empty.
 	ExpectStdoutEmpty() CommandBuilder
+
+	// ExpectStderrEmpty expects stderr to be empty.
 	ExpectStderrEmpty() CommandBuilder
 
+	// WithCaptureStdout writes stdout to the provided io.Writer in addition to internal checks.
 	WithCaptureStdout(w io.Writer) CommandBuilder
+
+	// WithCaptureStderr writes stderr to the provided io.Writer in addition to internal checks.
 	WithCaptureStderr(w io.Writer) CommandBuilder
 
 	Do() StepBuilder
@@ -217,6 +240,9 @@ func (c *commandBuilder) validateStepExpectations(exp expectation, stdoutBuf, st
 	}
 }
 
+// validateResults aggregates all validation checks and reports
+// failures through testing.T. Continues checking after failures
+// to provide complete diagnostic information.
 func (c *commandBuilder) validateResults(exitCode int, stdout, stderr string, t *testing.T) {
 	t.Helper()
 	// Check exit code
