@@ -2,6 +2,7 @@ package capytest
 
 import (
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 	"testing"
@@ -24,6 +25,9 @@ type CommandBuilder interface {
 	ExpectStdoutEmpty() CommandBuilder
 	ExpectStderrEmpty() CommandBuilder
 
+	WithCaptureStdout(w io.Writer) CommandBuilder
+	WithCaptureStderr(w io.Writer) CommandBuilder
+
 	Do() StepBuilder
 }
 
@@ -40,6 +44,9 @@ type commandBuilder struct {
 	stderrRegexes      []string
 	expectStdoutEmpty  bool
 	expectStderrEmpty  bool
+
+	stdoutWriters []io.Writer
+	stderrWriters []io.Writer
 
 	steps []step
 }
@@ -98,6 +105,16 @@ func (c *commandBuilder) ExpectStderrEmpty() CommandBuilder {
 	return c
 }
 
+func (c *commandBuilder) WithCaptureStdout(w io.Writer) CommandBuilder {
+	c.stdoutWriters = append(c.stdoutWriters, w)
+	return c
+}
+
+func (c *commandBuilder) WithCaptureStderr(w io.Writer) CommandBuilder {
+	c.stderrWriters = append(c.stderrWriters, w)
+	return c
+}
+
 func (c *commandBuilder) Do() StepBuilder {
 	return &stepBuilder{
 		parent:      c,
@@ -122,6 +139,9 @@ func (c *commandBuilder) Run(t *testing.T) {
 		defer close(stdoutDone)
 		for out := range session.Stdout() {
 			stdoutBuf.WriteString(out)
+			for _, w := range c.stdoutWriters {
+				w.Write([]byte(out))
+			}
 		}
 	}()
 
@@ -129,6 +149,9 @@ func (c *commandBuilder) Run(t *testing.T) {
 		defer close(stderrDone)
 		for errOut := range session.Stderr() {
 			stderrBuf.WriteString(errOut)
+			for _, w := range c.stderrWriters {
+				w.Write([]byte(errOut))
+			}
 		}
 	}()
 
