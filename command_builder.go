@@ -195,6 +195,7 @@ func (c *commandBuilder) validateStepExpectations(exp expectation, stdoutBuf, st
 }
 
 func (c *commandBuilder) validateResults(exitCode int, stdout, stderr string, t *testing.T) {
+	t.Helper()
 	// Check exit code
 	if c.expectedExitCode != nil {
 		if exitCode != *c.expectedExitCode {
