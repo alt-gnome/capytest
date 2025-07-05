@@ -1,9 +1,18 @@
 # capytest
 
-![capytest logo: a cute cartoon capybara sitting upright holding a terminal icon with '>_' and the text 'capytest' below in a modern rounded font](./image.png)
+<p align="center">
+  <img src="https://altlinux.space/alt-gnome/capytest/media/branch/main/image.png" alt="capytest logo: a cute cartoon capybara sitting upright holding a terminal icon with '>_' and the text 'capytest' below in a modern rounded font" width="250"/>
+</p>
 
-**capytest** is a simple, friendly library for E2E testing CLI applications in Go.
-It lets you write clear, step-by-step scenarios for both interactive and non-interactive command-line programs: send input, check output, verify exit codes, and simulate interrupts.
+<p align="center">
+  <b>capytest</b> is a simple, friendly library for E2E testing CLI applications in Go.<br/>
+  It lets you write clear, step-by-step scenarios for both interactive and non-interactive command-line programs.
+</p>
+
+<p align="center">
+  <a href="https://pkg.go.dev/go.alt-gnome.ru/capytest"><img src="https://pkg.go.dev/badge/go.alt-gnome.ru/capytest.svg" alt="Go Reference"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
+</p>
 
 ## Features
 
@@ -59,4 +68,4 @@ func TestExample(t *testing.T) {
 
 ## License
 
-MIT License © 2025 Maxim Slipenko
+[MIT License © 2025 Maxim Slipenko](./LICENSE)
