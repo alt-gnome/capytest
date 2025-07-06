@@ -24,6 +24,8 @@ func TestExample(t *testing.T) {
 	ts.Run("bash --version contains GNU", func(t *testing.T, r capytest.Runner) {
 		r.Command("bash", "--version").
 			ExpectStdoutContains("GNU").
+			ExpectStdoutMatchesSnapshot().
+			ExpectStderrEmpty().
 			Run(t)
 	})
 }

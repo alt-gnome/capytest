@@ -5,8 +5,11 @@ import (
 	"io"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/gkampitakis/go-snaps/snaps"
 )
 
 // CommandBuilder defines a fluent interface for configuring command execution
@@ -45,6 +48,12 @@ type CommandBuilder interface {
 	// ExpectStderrEmpty expects stderr to be empty.
 	ExpectStderrEmpty() CommandBuilder
 
+	// ExpectStdoutSnapshot expects stdout to matches snapshot.
+	ExpectStdoutMatchesSnapshot() CommandBuilder
+
+	// ExpectStdoutSnapshot expects stdout to matches snapshot.
+	ExpectStderrMatchesSnapshot() CommandBuilder
+
 	// WithCaptureStdout writes stdout to the provided io.Writer in addition to internal checks.
 	WithCaptureStdout(w io.Writer) CommandBuilder
 
@@ -55,18 +64,22 @@ type CommandBuilder interface {
 }
 
 type commandBuilder struct {
-	provider Provider
-	cmd      []string
-	timeout  time.Duration
+	provider         Provider
+	cmd              []string
+	snapshotCounters *sync.Map
 
-	expectedExitCode   *int
-	expectFailure      bool
-	stdoutExpectations []string
-	stderrExpectations []string
-	stdoutRegexes      []string
-	stderrRegexes      []string
-	expectStdoutEmpty  bool
-	expectStderrEmpty  bool
+	timeout time.Duration
+
+	expectedExitCode            *int
+	expectFailure               bool
+	stdoutExpectations          []string
+	stderrExpectations          []string
+	stdoutRegexes               []string
+	stderrRegexes               []string
+	expectStdoutEmpty           bool
+	expectStderrEmpty           bool
+	expectStdoutMatchesSnapshot bool
+	expectStderrMatchesSnapshot bool
 
 	stdoutWriters []io.Writer
 	stderrWriters []io.Writer
@@ -125,6 +138,16 @@ func (c *commandBuilder) ExpectStdoutEmpty() CommandBuilder {
 
 func (c *commandBuilder) ExpectStderrEmpty() CommandBuilder {
 	c.expectStderrEmpty = true
+	return c
+}
+
+func (c *commandBuilder) ExpectStdoutMatchesSnapshot() CommandBuilder {
+	c.expectStdoutMatchesSnapshot = true
+	return c
+}
+
+func (c *commandBuilder) ExpectStderrMatchesSnapshot() CommandBuilder {
+	c.expectStderrMatchesSnapshot = true
 	return c
 }
 
@@ -293,6 +316,19 @@ func (c *commandBuilder) validateResults(exitCode int, stdout, stderr string, t 
 	if c.expectStderrEmpty && stderr != "" {
 		t.Errorf("expected stderr to be empty but got: %q", stderr)
 	}
+
+	if c.expectStdoutMatchesSnapshot {
+		c.compareSnapshot(t, "stdout", stdout)
+	}
+
+	if c.expectStderrMatchesSnapshot {
+		c.compareSnapshot(t, "stderr", stderr)
+	}
+}
+
+func (c *commandBuilder) compareSnapshot(t *testing.T, name string, out string) {
+	t.Helper()
+	snaps.WithConfig(snaps.Ext("."+name)).MatchStandaloneSnapshot(t, out)
 }
 
 func waitForSubstring(buf *strings.Builder, substr string, timeoutSeconds int) bool {
