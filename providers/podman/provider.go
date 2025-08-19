@@ -8,19 +8,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/creack/pty"
 	"go.alt-gnome.ru/capytest"
 )
 
-type podmanProvider struct {
-	image       string
-	workdir     string
-	volumes     []string
-	envVars     []string
-	network     string
-	privileged  bool
-	containerID string
-	prepared    bool
-}
+var DefaultPodmanCli string = "podman"
+var DefaultImage string = "ubuntu:latest"
 
 type PodmanOption func(*podmanProvider)
 
@@ -60,78 +53,25 @@ func WithPrivileged(privileged bool) PodmanOption {
 	}
 }
 
+type podmanProvider struct {
+	image       string
+	workdir     string
+	volumes     []string
+	envVars     []string
+	network     string
+	privileged  bool
+	containerID string
+	prepared    bool
+}
+
 func Provider(opts ...PodmanOption) *podmanProvider {
 	p := &podmanProvider{
-		image: "ubuntu:latest", // дефолтный образ
+		image: DefaultImage,
 	}
 	for _, opt := range opts {
 		opt(p)
 	}
 	return p
-}
-
-type session struct {
-	cmd         *exec.Cmd
-	containerID string
-	stdin       io.WriteCloser
-	stdout      io.ReadCloser
-	stderr      io.ReadCloser
-
-	stdoutC chan string
-	stderrC chan string
-	done    chan error
-}
-
-var PODMAN_CLI string = "podman"
-
-func (p *podmanProvider) StartCommand(cmd []string) (capytest.InteractiveSession, error) {
-	if !p.prepared {
-		if err := p.Prepare(); err != nil {
-			return nil, fmt.Errorf("failed to prepare container: %w", err)
-		}
-	}
-
-	execCmd := []string{PODMAN_CLI, "exec", "-i", p.containerID}
-	execCmd = append(execCmd, cmd...)
-
-	c := exec.Command(execCmd[0], execCmd[1:]...)
-	stdin, err := c.StdinPipe()
-	if err != nil {
-		return nil, err
-	}
-	stdout, err := c.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
-	stderr, err := c.StderrPipe()
-	if err != nil {
-		return nil, err
-	}
-
-	sess := &session{
-		cmd:         c,
-		containerID: p.containerID,
-		stdin:       stdin,
-		stdout:      stdout,
-		stderr:      stderr,
-		stdoutC:     make(chan string),
-		stderrC:     make(chan string),
-		done:        make(chan error, 1),
-	}
-
-	if err := c.Start(); err != nil {
-		return nil, err
-	}
-
-	go sess.readPipe(sess.stdout, sess.stdoutC)
-	go sess.readPipe(sess.stderr, sess.stderrC)
-	go func() {
-		sess.done <- c.Wait()
-		close(sess.stdoutC)
-		close(sess.stderrC)
-	}()
-
-	return sess, nil
 }
 
 // Подготовка: создаем и запускаем контейнер
@@ -167,8 +107,43 @@ func (p *podmanProvider) Prepare() error {
 	return nil
 }
 
+func (p *podmanProvider) Cleanup() error {
+	if !p.prepared || p.containerID == "" {
+		return nil
+	}
+
+	stopCmd := exec.Command(DefaultPodmanCli, "stop", p.containerID)
+	stopCmd.Run()
+
+	rmCmd := exec.Command(DefaultPodmanCli, "rm", p.containerID)
+	if err := rmCmd.Run(); err != nil {
+		return fmt.Errorf("failed to remove container %s: %w", p.containerID, err)
+	}
+
+	p.containerID = ""
+	p.prepared = false
+	return nil
+}
+
+func (p *podmanProvider) PullImage() error {
+	cmd := exec.Command(DefaultPodmanCli, "pull", p.image)
+	return cmd.Run()
+}
+
+func (p *podmanProvider) ImageExists() (bool, error) {
+	cmd := exec.Command(DefaultPodmanCli, "image", "exists", p.image)
+	err := cmd.Run()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 func (p *podmanProvider) createContainer() (string, error) {
-	createCmd := []string{PODMAN_CLI, "create", "--init"}
+	createCmd := []string{DefaultPodmanCli, "create", "--init"}
 
 	// Добавляем опции
 	if p.workdir != "" {
@@ -210,7 +185,7 @@ func (p *podmanProvider) createContainer() (string, error) {
 }
 
 func (p *podmanProvider) startContainer() error {
-	cmd := exec.Command(PODMAN_CLI, "start", p.containerID)
+	cmd := exec.Command(DefaultPodmanCli, "start", p.containerID)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to start container %s: %w", p.containerID, err)
 	}
@@ -229,7 +204,7 @@ func (p *podmanProvider) startContainer() error {
 }
 
 func (p *podmanProvider) isContainerRunning() (bool, error) {
-	cmd := exec.Command(PODMAN_CLI, "container", "inspect", p.containerID, "--format", "{{.State.Running}}")
+	cmd := exec.Command(DefaultPodmanCli, "container", "inspect", p.containerID, "--format", "{{.State.Running}}")
 	output, err := cmd.Output()
 	if err != nil {
 		return false, err
@@ -237,55 +212,114 @@ func (p *podmanProvider) isContainerRunning() (bool, error) {
 	return string(output) == "true\n", nil
 }
 
-func (p *podmanProvider) Cleanup() error {
-	if !p.prepared || p.containerID == "" {
-		return nil
+func (p *podmanProvider) StartCommand(cmd []string) (capytest.NotInteractiveSession, error) {
+	if !p.prepared {
+		if err := p.Prepare(); err != nil {
+			return nil, fmt.Errorf("failed to prepare container: %w", err)
+		}
 	}
 
-	stopCmd := exec.Command(PODMAN_CLI, "stop", p.containerID)
-	stopCmd.Run()
+	execCmd := []string{DefaultPodmanCli, "exec", "-i", p.containerID}
+	execCmd = append(execCmd, cmd...)
 
-	rmCmd := exec.Command(PODMAN_CLI, "rm", p.containerID)
-	if err := rmCmd.Run(); err != nil {
-		return fmt.Errorf("failed to remove container %s: %w", p.containerID, err)
-	}
-
-	p.containerID = ""
-	p.prepared = false
-	return nil
-}
-
-func (p *podmanProvider) PullImage() error {
-	cmd := exec.Command(PODMAN_CLI, "pull", p.image)
-	return cmd.Run()
-}
-
-func (p *podmanProvider) ImageExists() (bool, error) {
-	cmd := exec.Command(PODMAN_CLI, "image", "exists", p.image)
-	err := cmd.Run()
+	c := exec.Command(execCmd[0], execCmd[1:]...)
+	stdin, err := c.StdinPipe()
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
-			return false, nil
-		}
-		return false, err
+		return nil, err
 	}
-	return true, nil
+	stdout, err := c.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	stderr, err := c.StderrPipe()
+	if err != nil {
+		return nil, err
+	}
+
+	sess := &notInteractiveSession{
+		cmd:         c,
+		containerID: p.containerID,
+		stdin:       stdin,
+		stdout:      stdout,
+		stderr:      stderr,
+		stdoutC:     make(chan string),
+		stderrC:     make(chan string),
+		done:        make(chan error, 1),
+	}
+
+	if err := c.Start(); err != nil {
+		return nil, err
+	}
+
+	go sess.readPipe(sess.stdout, sess.stdoutC)
+	go sess.readPipe(sess.stderr, sess.stderrC)
+	go func() {
+		sess.done <- c.Wait()
+		close(sess.stdoutC)
+		close(sess.stderrC)
+	}()
+
+	return sess, nil
 }
 
-func (s *session) readPipe(r io.Reader, ch chan string) {
-	buf := make([]byte, 1024)
-	for {
-		n, err := r.Read(buf)
-		if n > 0 {
-			ch <- string(buf[:n])
-		}
-		if err != nil {
-			return
+func (p *podmanProvider) StartInteractiveCommand(cmd []string) (capytest.InteractiveSession, error) {
+	if !p.prepared {
+		if err := p.Prepare(); err != nil {
+			return nil, fmt.Errorf("failed to prepare container: %w", err)
 		}
 	}
+
+	execCmd := []string{DefaultPodmanCli, "exec", "-it", p.containerID}
+	execCmd = append(execCmd, cmd...)
+
+	c := exec.Command(execCmd[0], execCmd[1:]...)
+
+	ptmx, err := pty.Start(c)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start interactive command: %w", err)
+	}
+
+	sess := &interactiveSession{
+		cmd:    c,
+		pty:    ptmx,
+		output: make(chan string),
+		done:   make(chan error, 1),
+	}
+
+	go func() {
+		defer close(sess.output)
+		buf := make([]byte, 1024)
+		for {
+			n, err := sess.pty.Read(buf)
+			if n > 0 {
+				sess.output <- string(buf[:n])
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	go func() {
+		sess.done <- c.Wait()
+	}()
+
+	return sess, nil
 }
 
-func (s *session) Write(input string) error {
+type notInteractiveSession struct {
+	cmd         *exec.Cmd
+	containerID string
+	stdin       io.WriteCloser
+	stdout      io.ReadCloser
+	stderr      io.ReadCloser
+
+	stdoutC chan string
+	stderrC chan string
+	done    chan error
+}
+
+func (s *notInteractiveSession) Write(input string) error {
 	_, err := io.WriteString(s.stdin, input)
 	if f, ok := s.stdin.(*os.File); ok {
 		f.Sync()
@@ -293,15 +327,15 @@ func (s *session) Write(input string) error {
 	return err
 }
 
-func (s *session) Stdout() <-chan string {
+func (s *notInteractiveSession) Stdout() <-chan string {
 	return s.stdoutC
 }
 
-func (s *session) Stderr() <-chan string {
+func (s *notInteractiveSession) Stderr() <-chan string {
 	return s.stderrC
 }
 
-func (s *session) Wait() (int, error) {
+func (s *notInteractiveSession) Wait() (int, error) {
 	err := <-s.done
 	if err == nil {
 		return 0, nil
@@ -326,10 +360,67 @@ func (s *session) Wait() (int, error) {
 	return -1, err
 }
 
-func (s *session) Interrupt() error {
+func (s *notInteractiveSession) Interrupt() error {
 	if s.cmd.Process == nil {
 		return os.ErrInvalid
 	}
 
+	return s.cmd.Process.Signal(syscall.SIGINT)
+}
+
+func (s *notInteractiveSession) readPipe(r io.Reader, ch chan string) {
+	buf := make([]byte, 1024)
+	for {
+		n, err := r.Read(buf)
+		if n > 0 {
+			ch <- string(buf[:n])
+		}
+		if err != nil {
+			return
+		}
+	}
+}
+
+type interactiveSession struct {
+	cmd    *exec.Cmd
+	pty    *os.File
+	output chan string
+	done   chan error
+}
+
+func (s *interactiveSession) Write(input []byte) error {
+	_, err := s.pty.Write(input)
+	return err
+}
+
+func (s *interactiveSession) Output() <-chan string {
+	return s.output
+}
+
+func (s *interactiveSession) Wait() (int, error) {
+	err := <-s.done
+	if err == nil {
+		return 0, nil
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		code := exitErr.ExitCode()
+		switch code {
+		case 125:
+			return -1, fmt.Errorf("podman exec internal error: %w", err)
+		case 126:
+			return -1, fmt.Errorf("cannot invoke command in container: %w", err)
+		case 127:
+			return -1, fmt.Errorf("command not found in container: %w", err)
+		default:
+			return code, nil
+		}
+	}
+	return -1, err
+}
+
+func (s *interactiveSession) Interrupt() error {
+	if s.cmd.Process == nil {
+		return os.ErrInvalid
+	}
 	return s.cmd.Process.Signal(syscall.SIGINT)
 }

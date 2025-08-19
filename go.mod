@@ -5,6 +5,7 @@ go 1.24.4
 require github.com/gkampitakis/go-snaps v0.5.13
 
 require (
+	github.com/creack/pty v1.1.24 // indirect
 	github.com/gkampitakis/ciinfo v0.3.2 // indirect
 	github.com/gkampitakis/go-diff v1.3.2 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect

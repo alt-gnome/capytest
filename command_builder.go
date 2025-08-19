@@ -5,7 +5,6 @@ import (
 	"io"
 	"regexp"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -64,9 +63,8 @@ type CommandBuilder interface {
 }
 
 type commandBuilder struct {
-	provider         Provider
-	cmd              []string
-	snapshotCounters *sync.Map
+	provider Provider
+	cmd      []string
 
 	timeout time.Duration
 
@@ -168,7 +166,44 @@ func (c *commandBuilder) Do() StepBuilder {
 	}
 }
 
-func (c *commandBuilder) Run(t *testing.T) {
+func (c *commandBuilder) runInteractive(t *testing.T) {
+	t.Helper()
+
+	session, err := c.provider.StartInteractiveCommand(c.cmd)
+	if err != nil {
+		t.Fatalf("failed to start command: %v", err)
+	}
+
+	var outputBuf strings.Builder
+	outputCh := session.Output()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for out := range outputCh {
+			outputBuf.WriteString(out)
+		}
+	}()
+
+	for _, step := range c.steps {
+		outputBuf.Reset()
+
+		if err := c.executeStep(session, step, &outputBuf, t); err != nil {
+			t.Fatalf("failed to execute step: %v", err)
+		}
+	}
+
+	exitCode, err := session.Wait()
+	if err != nil {
+		t.Fatalf("error waiting for process: %v", err)
+	}
+
+	<-done
+
+	c.validateResults(exitCode, "", "", t)
+}
+
+func (c *commandBuilder) runNonInteractive(t *testing.T) {
 	t.Helper()
 
 	session, err := c.provider.StartCommand(c.cmd)
@@ -201,12 +236,6 @@ func (c *commandBuilder) Run(t *testing.T) {
 		}
 	}()
 
-	for _, step := range c.steps {
-		if err := c.executeStep(session, step, &stdoutBuf, &stderrBuf, t); err != nil {
-			t.Fatalf("failed to execute step: %v", err)
-		}
-	}
-
 	exitCode, err := session.Wait()
 	if err != nil {
 		t.Fatalf("error waiting for process: %v", err)
@@ -218,7 +247,19 @@ func (c *commandBuilder) Run(t *testing.T) {
 	c.validateResults(exitCode, stdoutBuf.String(), stderrBuf.String(), t)
 }
 
-func (c *commandBuilder) executeStep(session InteractiveSession, step step, stdoutBuf, stderrBuf *strings.Builder, t *testing.T) error {
+func (c *commandBuilder) Run(t *testing.T) {
+	t.Helper()
+
+	if len(c.steps) > 0 {
+		c.runInteractive(t)
+	} else {
+		c.runNonInteractive(t)
+	}
+}
+
+func (c *commandBuilder) executeStep(session InteractiveSession, step step, combinedBuf *strings.Builder, t *testing.T) error {
+	combinedBuf.Reset()
+
 	switch step.action {
 	case sendAction:
 		if err := session.Write(step.data); err != nil {
@@ -232,33 +273,20 @@ func (c *commandBuilder) executeStep(session InteractiveSession, step step, stdo
 		}
 	}
 
-	c.validateStepExpectations(step.expectation, stdoutBuf, stderrBuf, t)
+	c.validateStepExpectations(step.expectation, combinedBuf, t)
 
 	return nil
 }
 
-func (c *commandBuilder) validateStepExpectations(exp expectation, stdoutBuf, stderrBuf *strings.Builder, t *testing.T) {
-	if exp.stdout != "" {
-		if !waitForSubstring(stdoutBuf, exp.stdout, 5) {
-			t.Errorf("stdout does not contain %q\nstdout: %q", exp.stdout, stdoutBuf.String())
+func (c *commandBuilder) validateStepExpectations(exp expectation, combinedBuf *strings.Builder, t *testing.T) {
+	if exp.outputContains != "" {
+		if !waitForSubstring(combinedBuf, exp.outputContains, 5) {
+			t.Errorf("stdout does not contain %q\nstdout: %q", exp.outputContains, combinedBuf.String())
 		}
 	}
-
-	if exp.stderr != "" {
-		if !waitForSubstring(stderrBuf, exp.stderr, 5) {
-			t.Errorf("stderr does not contain %q\nstderr: %q", exp.stderr, stderrBuf.String())
-		}
-	}
-
-	if exp.stdoutRegex != "" {
-		if matched, _ := regexp.MatchString(exp.stdoutRegex, stdoutBuf.String()); !matched {
-			t.Errorf("stdout does not match regex %q\nstdout: %q", exp.stdoutRegex, stdoutBuf.String())
-		}
-	}
-
-	if exp.stderrRegex != "" {
-		if matched, _ := regexp.MatchString(exp.stderrRegex, stderrBuf.String()); !matched {
-			t.Errorf("stderr does not match regex %q\nstderr: %q", exp.stderrRegex, stderrBuf.String())
+	if exp.outputRegex != "" {
+		if matched, _ := regexp.MatchString(exp.outputRegex, combinedBuf.String()); !matched {
+			t.Errorf("stdout does not match regex %q\nstdout: %q", exp.outputContains, combinedBuf.String())
 		}
 	}
 }

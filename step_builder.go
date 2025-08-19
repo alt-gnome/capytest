@@ -3,16 +3,15 @@ package capytest
 import "time"
 
 type StepBuilder interface {
-	Send(input string) StepBuilder
+	Send(input []byte) StepBuilder
+	SendString(input string) StepBuilder
 	SendLine(line string) StepBuilder
 	Wait(duration time.Duration) StepBuilder
 	Interrupt() StepBuilder
 	Terminate() StepBuilder
 
-	ExpectStdoutContains(substr string) StepBuilder
-	ExpectStderrContains(substr string) StepBuilder
-	ExpectStdoutRegex(pattern string) StepBuilder
-	ExpectStderrRegex(pattern string) StepBuilder
+	ExpectOutputContains(substr string) StepBuilder
+	ExpectOutputRegex(pattern string) StepBuilder
 
 	Then() StepBuilder
 	Done() CommandBuilder
@@ -29,15 +28,13 @@ const (
 )
 
 type expectation struct {
-	stdout      string
-	stderr      string
-	stdoutRegex string
-	stderrRegex string
+	outputContains string
+	outputRegex    string
 }
 
 type step struct {
 	action      stepAction
-	data        string
+	data        []byte
 	duration    time.Duration
 	expectation expectation
 }
@@ -47,15 +44,21 @@ type stepBuilder struct {
 	currentStep *step
 }
 
-func (s *stepBuilder) Send(input string) StepBuilder {
+func (s *stepBuilder) Send(input []byte) StepBuilder {
 	s.currentStep.action = sendAction
 	s.currentStep.data = input
 	return s
 }
 
+func (s *stepBuilder) SendString(input string) StepBuilder {
+	s.currentStep.action = sendAction
+	s.currentStep.data = []byte(input)
+	return s
+}
+
 func (s *stepBuilder) SendLine(line string) StepBuilder {
 	s.currentStep.action = sendAction
-	s.currentStep.data = line + "\n"
+	s.currentStep.data = []byte(line + "\n")
 	return s
 }
 
@@ -75,23 +78,13 @@ func (s *stepBuilder) Terminate() StepBuilder {
 	return s
 }
 
-func (s *stepBuilder) ExpectStdoutContains(substr string) StepBuilder {
-	s.currentStep.expectation.stdout = substr
+func (s *stepBuilder) ExpectOutputContains(substr string) StepBuilder {
+	s.currentStep.expectation.outputContains = substr
 	return s
 }
 
-func (s *stepBuilder) ExpectStderrContains(substr string) StepBuilder {
-	s.currentStep.expectation.stderr = substr
-	return s
-}
-
-func (s *stepBuilder) ExpectStdoutRegex(pattern string) StepBuilder {
-	s.currentStep.expectation.stdoutRegex = pattern
-	return s
-}
-
-func (s *stepBuilder) ExpectStderrRegex(pattern string) StepBuilder {
-	s.currentStep.expectation.stderrRegex = pattern
+func (s *stepBuilder) ExpectOutputRegex(pattern string) StepBuilder {
+	s.currentStep.expectation.outputRegex = pattern
 	return s
 }
 
