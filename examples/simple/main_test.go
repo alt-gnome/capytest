@@ -28,4 +28,12 @@ func TestExample(t *testing.T) {
 			ExpectStderrEmpty().
 			Run(t)
 	})
+
+	// Test negative expectations
+	ts.Run("echo should not contain unexpected text", func(t *testing.T, r capytest.Runner) {
+		r.Command("echo", "hello world").
+			ExpectStdoutNotContains("unexpected").
+			ExpectStderrNotContains("error").
+			Run(t)
+	})
 }

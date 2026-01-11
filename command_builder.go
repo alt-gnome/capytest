@@ -53,6 +53,12 @@ type CommandBuilder interface {
 	// ExpectStdoutSnapshot expects stdout to matches snapshot.
 	ExpectStderrMatchesSnapshot() CommandBuilder
 
+	// ExpectStdoutNotContains expects stdout to NOT contain the given substring.
+	ExpectStdoutNotContains(substr string) CommandBuilder
+
+	// ExpectStderrNotContains expects stderr to NOT contain the given substring.
+	ExpectStderrNotContains(substr string) CommandBuilder
+
 	// WithCaptureStdout writes stdout to the provided io.Writer in addition to internal checks.
 	WithCaptureStdout(w io.Writer) CommandBuilder
 
@@ -78,6 +84,8 @@ type commandBuilder struct {
 	expectStderrEmpty           bool
 	expectStdoutMatchesSnapshot bool
 	expectStderrMatchesSnapshot bool
+	stdoutNotExpectations       []string
+	stderrNotExpectations       []string
 
 	stdoutWriters []io.Writer
 	stderrWriters []io.Writer
@@ -116,6 +124,16 @@ func (c *commandBuilder) ExpectStdoutContains(substr string) CommandBuilder {
 
 func (c *commandBuilder) ExpectStderrContains(substr string) CommandBuilder {
 	c.stderrExpectations = append(c.stderrExpectations, substr)
+	return c
+}
+
+func (c *commandBuilder) ExpectStdoutNotContains(substr string) CommandBuilder {
+	c.stdoutNotExpectations = append(c.stdoutNotExpectations, substr)
+	return c
+}
+
+func (c *commandBuilder) ExpectStderrNotContains(substr string) CommandBuilder {
+	c.stderrNotExpectations = append(c.stderrNotExpectations, substr)
 	return c
 }
 
@@ -318,6 +336,20 @@ func (c *commandBuilder) validateResults(exitCode int, stdout, stderr string, t 
 	for _, expected := range c.stderrExpectations {
 		if !strings.Contains(stderr, expected) {
 			t.Errorf("stderr does not contain %q\nstderr: %q", expected, stderr)
+		}
+	}
+
+	// Check stdout NOT contains
+	for _, notExpected := range c.stdoutNotExpectations {
+		if strings.Contains(stdout, notExpected) {
+			t.Errorf("stdout contains %q but should not\nstdout: %q", notExpected, stdout)
+		}
+	}
+
+	// Check stderr NOT contains
+	for _, notExpected := range c.stderrNotExpectations {
+		if strings.Contains(stderr, notExpected) {
+			t.Errorf("stderr contains %q but should not\nstderr: %q", notExpected, stderr)
 		}
 	}
 
