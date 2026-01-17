@@ -317,11 +317,11 @@ func (c *commandBuilder) validateResults(exitCode int, stdout, stderr string, t 
 	// Check exit code
 	if c.expectedExitCode != nil {
 		if exitCode != *c.expectedExitCode {
-			t.Errorf("unexpected exit code: got %d, want %d", exitCode, *c.expectedExitCode)
+			t.Errorf("unexpected exit code: got %d, want %d\nstderr: %q", exitCode, *c.expectedExitCode, stderr)
 		}
 	} else if c.expectFailure {
 		if exitCode == 0 {
-			t.Errorf("expected failure but got success (exit code 0)")
+			t.Errorf("expected failure but got success (exit code 0)\nstderr: %q", stderr)
 		}
 	}
 
