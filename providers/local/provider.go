@@ -75,8 +75,11 @@ func (s *session) Interrupt() error {
 	return s.cmd.Process.Signal(syscall.SIGINT)
 }
 
-func (p *localProvider) StartCommand(cmd []string) (capytest.NotInteractiveSession, error) {
+func (p *localProvider) StartCommand(cmd []string, opts capytest.CommandOptions) (capytest.NotInteractiveSession, error) {
 	c := exec.Command(cmd[0], cmd[1:]...)
+	if len(opts.Env) > 0 {
+		c.Env = append(os.Environ(), opts.Env...)
+	}
 	stdin, err := c.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -150,8 +153,11 @@ func (s *interactiveSession) Interrupt() error {
 	return s.cmd.Process.Signal(syscall.SIGINT)
 }
 
-func (p *localProvider) StartInteractiveCommand(cmd []string) (capytest.InteractiveSession, error) {
+func (p *localProvider) StartInteractiveCommand(cmd []string, opts capytest.CommandOptions) (capytest.InteractiveSession, error) {
 	c := exec.Command(cmd[0], cmd[1:]...)
+	if len(opts.Env) > 0 {
+		c.Env = append(os.Environ(), opts.Env...)
+	}
 
 	ptmx, err := pty.Start(c)
 	if err != nil {

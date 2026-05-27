@@ -36,4 +36,12 @@ func TestExample(t *testing.T) {
 			ExpectStderrNotContains("error").
 			Run(t)
 	})
+
+	// Per-command environment variables
+	ts.Run("WithEnv passes env vars to the command", func(t *testing.T, r capytest.Runner) {
+		r.Command("sh", "-c", "echo $GREETING").
+			WithEnv("GREETING", "hi").
+			ExpectStdoutContains("hi").
+			Run(t)
+	})
 }

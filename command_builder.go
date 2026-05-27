@@ -59,6 +59,10 @@ type CommandBuilder interface {
 	// ExpectStderrNotContains expects stderr to NOT contain the given substring.
 	ExpectStderrNotContains(substr string) CommandBuilder
 
+	// WithEnv sets an environment variable for the command. May be called
+	// multiple times; later values override earlier values for the same key.
+	WithEnv(key, value string) CommandBuilder
+
 	// WithCaptureStdout writes stdout to the provided io.Writer in addition to internal checks.
 	WithCaptureStdout(w io.Writer) CommandBuilder
 
@@ -86,6 +90,8 @@ type commandBuilder struct {
 	expectStderrMatchesSnapshot bool
 	stdoutNotExpectations       []string
 	stderrNotExpectations       []string
+
+	env []string
 
 	stdoutWriters []io.Writer
 	stderrWriters []io.Writer
@@ -167,6 +173,11 @@ func (c *commandBuilder) ExpectStderrMatchesSnapshot() CommandBuilder {
 	return c
 }
 
+func (c *commandBuilder) WithEnv(key, value string) CommandBuilder {
+	c.env = append(c.env, key+"="+value)
+	return c
+}
+
 func (c *commandBuilder) WithCaptureStdout(w io.Writer) CommandBuilder {
 	c.stdoutWriters = append(c.stdoutWriters, w)
 	return c
@@ -187,7 +198,7 @@ func (c *commandBuilder) Do() StepBuilder {
 func (c *commandBuilder) runInteractive(t *testing.T) {
 	t.Helper()
 
-	session, err := c.provider.StartInteractiveCommand(c.cmd)
+	session, err := c.provider.StartInteractiveCommand(c.cmd, CommandOptions{Env: c.env})
 	if err != nil {
 		t.Fatalf("failed to start command: %v", err)
 	}
@@ -224,7 +235,7 @@ func (c *commandBuilder) runInteractive(t *testing.T) {
 func (c *commandBuilder) runNonInteractive(t *testing.T) {
 	t.Helper()
 
-	session, err := c.provider.StartCommand(c.cmd)
+	session, err := c.provider.StartCommand(c.cmd, CommandOptions{Env: c.env})
 	if err != nil {
 		t.Fatalf("failed to start command: %v", err)
 	}

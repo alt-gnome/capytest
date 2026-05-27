@@ -212,14 +212,18 @@ func (p *podmanProvider) isContainerRunning() (bool, error) {
 	return string(output) == "true\n", nil
 }
 
-func (p *podmanProvider) StartCommand(cmd []string) (capytest.NotInteractiveSession, error) {
+func (p *podmanProvider) StartCommand(cmd []string, opts capytest.CommandOptions) (capytest.NotInteractiveSession, error) {
 	if !p.prepared {
 		if err := p.Prepare(); err != nil {
 			return nil, fmt.Errorf("failed to prepare container: %w", err)
 		}
 	}
 
-	execCmd := []string{DefaultPodmanCli, "exec", "-i", p.containerID}
+	execCmd := []string{DefaultPodmanCli, "exec", "-i"}
+	for _, e := range opts.Env {
+		execCmd = append(execCmd, "-e", e)
+	}
+	execCmd = append(execCmd, p.containerID)
 	execCmd = append(execCmd, cmd...)
 
 	c := exec.Command(execCmd[0], execCmd[1:]...)
@@ -262,14 +266,18 @@ func (p *podmanProvider) StartCommand(cmd []string) (capytest.NotInteractiveSess
 	return sess, nil
 }
 
-func (p *podmanProvider) StartInteractiveCommand(cmd []string) (capytest.InteractiveSession, error) {
+func (p *podmanProvider) StartInteractiveCommand(cmd []string, opts capytest.CommandOptions) (capytest.InteractiveSession, error) {
 	if !p.prepared {
 		if err := p.Prepare(); err != nil {
 			return nil, fmt.Errorf("failed to prepare container: %w", err)
 		}
 	}
 
-	execCmd := []string{DefaultPodmanCli, "exec", "-it", p.containerID}
+	execCmd := []string{DefaultPodmanCli, "exec", "-it"}
+	for _, e := range opts.Env {
+		execCmd = append(execCmd, "-e", e)
+	}
+	execCmd = append(execCmd, p.containerID)
 	execCmd = append(execCmd, cmd...)
 
 	c := exec.Command(execCmd[0], execCmd[1:]...)
