@@ -59,6 +59,12 @@ type CommandBuilder interface {
 	// ExpectStderrNotContains expects stderr to NOT contain the given substring.
 	ExpectStderrNotContains(substr string) CommandBuilder
 
+	// ExpectStdoutEqual expects stdout to exactly equal the given string.
+	ExpectStdoutEqual(expected string) CommandBuilder
+
+	// ExpectStderrEqual expects stderr to exactly equal the given string.
+	ExpectStderrEqual(expected string) CommandBuilder
+
 	// WithEnv sets an environment variable for the command. May be called
 	// multiple times; later values override earlier values for the same key.
 	WithEnv(key, value string) CommandBuilder
@@ -90,6 +96,8 @@ type commandBuilder struct {
 	expectStderrMatchesSnapshot bool
 	stdoutNotExpectations       []string
 	stderrNotExpectations       []string
+	stdoutExpectedEqual         *string
+	stderrExpectedEqual         *string
 
 	env []string
 
@@ -140,6 +148,16 @@ func (c *commandBuilder) ExpectStdoutNotContains(substr string) CommandBuilder {
 
 func (c *commandBuilder) ExpectStderrNotContains(substr string) CommandBuilder {
 	c.stderrNotExpectations = append(c.stderrNotExpectations, substr)
+	return c
+}
+
+func (c *commandBuilder) ExpectStdoutEqual(expected string) CommandBuilder {
+	c.stdoutExpectedEqual = &expected
+	return c
+}
+
+func (c *commandBuilder) ExpectStderrEqual(expected string) CommandBuilder {
+	c.stderrExpectedEqual = &expected
 	return c
 }
 
@@ -386,6 +404,16 @@ func (c *commandBuilder) validateResults(exitCode int, stdout, stderr string, t 
 	// Check empty stderr
 	if c.expectStderrEmpty && stderr != "" {
 		t.Errorf("expected stderr to be empty but got: %q", stderr)
+	}
+
+	// Check exact stdout match
+	if c.stdoutExpectedEqual != nil && stdout != *c.stdoutExpectedEqual {
+		t.Errorf("stdout does not equal %q\nstdout: %q", *c.stdoutExpectedEqual, stdout)
+	}
+
+	// Check exact stderr match
+	if c.stderrExpectedEqual != nil && stderr != *c.stderrExpectedEqual {
+		t.Errorf("stderr does not equal %q\nstderr: %q", *c.stderrExpectedEqual, stderr)
 	}
 
 	if c.expectStdoutMatchesSnapshot {

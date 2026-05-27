@@ -37,6 +37,14 @@ func TestExample(t *testing.T) {
 			Run(t)
 	})
 
+	// Exact stdout/stderr match
+	ts.Run("echo stdout exactly equals expected output", func(t *testing.T, r capytest.Runner) {
+		r.Command("echo", "hello").
+			ExpectStdoutEqual("hello\n").
+			ExpectStderrEqual("").
+			Run(t)
+	})
+
 	// Per-command environment variables
 	ts.Run("WithEnv passes env vars to the command", func(t *testing.T, r capytest.Runner) {
 		r.Command("sh", "-c", "echo $GREETING").
